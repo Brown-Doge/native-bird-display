@@ -1,12 +1,15 @@
 #!/usr/bin/env python3
-# AllBirds slideshow for Raspberry Pi Zero W (ARMv6) — smooth-fade build.
-# Keeps the cross-fades; renders them efficiently for the Zero's old chip.
+# AllBirds slideshow for Raspberry Pi Zero W (ARMv6) — portrait build.
+# Rotates output 90 deg so it reads upright on a physically-rotated (portrait) monitor.
+# Frames are fit to the screen (no crop, no stretch); crossfades preserved.
 # Controls: RIGHT=next bird  LEFT=prev bird  SPACE=pause  Q/ESC=quit
+#
+# If the picture comes out UPSIDE DOWN, change ROTATE = 90 to ROTATE = 270.
 import pygame, os, glob, sys
 
+ROTATE = 90                # 90 or 270, depending on which way you flip the monitor
+
 HERE = os.path.dirname(os.path.abspath(__file__))
-# Find the frames folder wherever it lives, so this file runs from
-# the repo root OR from inside the pizero folder without moving anything.
 CANDIDATES = [
     os.path.join(HERE, 'frames'),
     os.path.join(HERE, 'pizero', 'frames'),
@@ -21,9 +24,9 @@ if FRAMEDIR is None:
     for d in CANDIDATES: print('  ', os.path.abspath(d))
     sys.exit(1)
 FRAMES = sorted(glob.glob(os.path.join(FRAMEDIR, '*.jpg')))
-PHOTO_MS   = 7000          # hold time per photo
-FADE_MS    = 900           # fade length (time-based, not step-based)
-PER_BIRD   = 3
+PHOTO_MS = 7000
+FADE_MS  = 900
+PER_BIRD = 3
 N = len(FRAMES)
 
 pygame.init()
@@ -31,44 +34,41 @@ screen = pygame.display.set_mode((0, 0), pygame.FULLSCREEN)
 pygame.mouse.set_visible(False)
 W, H = screen.get_size()
 
-# Pre-scale ONCE to the exact on-screen size, so fading never rescales.
+# Work out the fixed on-screen rectangle ALL frames land in.
+# Rotate a sample, fit it to the screen with no stretch, and center it.
+_s = pygame.image.load(FRAMES[0]).convert()
+_s = pygame.transform.rotate(_s, ROTATE)
+rw, rh = _s.get_size()
+scale = min(W / rw, H / rh)
+TW, TH = int(rw * scale), int(rh * scale)
+BX, BY = (W - TW) // 2, (H - TH) // 2
+IMG_RECT = pygame.Rect(BX, BY, TW, TH)
+
 def load(idx):
     img = pygame.image.load(FRAMES[idx]).convert()
-    iw, ih = img.get_size()
-    surf = pygame.transform.smoothscale(img, (int(iw * H / ih), H))
-    return surf
+    img = pygame.transform.rotate(img, ROTATE)
+    return pygame.transform.smoothscale(img, (TW, TH))
 
-XOFF_CACHE = {}
-def xoff(surf):
-    return (W - surf.get_width()) // 2
-
-# Black backdrop drawn once; we only repaint the card area during fades.
 def paint_static(surf):
     screen.fill((0, 0, 0))
-    screen.blit(surf, (xoff(surf), 0))
+    screen.blit(surf, (BX, BY))
     pygame.display.flip()
 
 def crossfade(cur, nxt):
-    """Time-based fade: smooth regardless of how slow the chip is.
-    Only the card rectangle is touched, and per-pixel alpha is set once."""
-    x = xoff(nxt)
-    cx = xoff(cur)
-    rect = pygame.Rect(min(x, cx), 0, max(cur.get_width(), nxt.get_width()), H)
     top = nxt.convert_alpha()
     clock = pygame.time.Clock()
     start = pygame.time.get_ticks()
     while True:
         t = (pygame.time.get_ticks() - start) / FADE_MS
         if t >= 1: break
-        a = int(255 * t)
-        screen.fill((0, 0, 0), rect)
-        screen.blit(cur, (cx, 0))
-        top.set_alpha(a)
-        screen.blit(top, (x, 0))
-        pygame.display.update(rect)     # update only the card area, not whole screen
+        screen.fill((0, 0, 0), IMG_RECT)
+        screen.blit(cur, (BX, BY))
+        top.set_alpha(int(255 * t))
+        screen.blit(top, (BX, BY))
+        pygame.display.update(IMG_RECT)
         pygame.event.pump()
         clock.tick(60)
-    paint_static(nxt)                   # land cleanly on the final image
+    paint_static(nxt)
 
 i = 0
 cur = load(i)

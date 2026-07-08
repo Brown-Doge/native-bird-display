@@ -1,14 +1,20 @@
 #!/usr/bin/env python3
-# AllBirds slideshow for Raspberry Pi Zero W (ARMv6) — portrait build.
-# Rotates output 90 deg so it reads upright on a physically-rotated (portrait) monitor.
-# Frames are fit to the screen (no crop, no stretch); crossfades preserved.
-# Controls: RIGHT=next bird  LEFT=prev bird  SPACE=pause  Q/ESC=quit
+# AllBirds slideshow for Raspberry Pi Zero W (ARMv6) — adaptive build.
+# Auto-fits every frame to whatever screen it's on (any size, any orientation):
+# no crop, no stretch; crossfades preserved.
 #
-# If the picture comes out UPSIDE DOWN, change ROTATE = 90 to ROTATE = 270.
+# Rotation is adaptive:
+#   * Default: frames are shown UPRIGHT and fit to the detected screen.
+#   * If the picture comes out sideways or upside-down (e.g. a monitor that's
+#     physically turned), press  R  to rotate it 90 deg at a time until it
+#     looks right. Your choice is remembered across restarts
+#     (saved to ~/.allbirds_rotation), so you only set it once per screen.
+#   * Or force it at launch:  python3 birdshow.py --rotate 90   (0/90/180/270)
+#
+# Controls: RIGHT=next bird  LEFT=prev bird  SPACE=pause  R=rotate  Q/ESC=quit
 import pygame, os, glob, sys
 
-ROTATE = 90                # 90 or 270, depending on which way you flip the monitor
-
+# ---------- locate frames (portable after a fresh clone) ----------
 HERE = os.path.dirname(os.path.abspath(__file__))
 CANDIDATES = [
     os.path.join(HERE, 'frames'),
@@ -29,24 +35,64 @@ FADE_MS  = 900
 PER_BIRD = 3
 N = len(FRAMES)
 
+# ---------- rotation: --rotate arg  >  saved file  >  0 (upright) ----------
+CFG = os.path.join(os.path.expanduser('~'), '.allbirds_rotation')
+
+def read_saved_rotation():
+    try:
+        v = int(open(CFG).read().strip())
+        return v if v in (0, 90, 180, 270) else None
+    except Exception:
+        return None
+
+def save_rotation(v):
+    try:
+        open(CFG, 'w').write(str(v))
+    except Exception:
+        pass
+
+ROTATE = None
+argv = sys.argv[1:]
+for j, a in enumerate(argv):
+    if a == '--rotate' and j + 1 < len(argv):
+        try: ROTATE = int(argv[j + 1])
+        except ValueError: pass
+    elif a.startswith('--rotate='):
+        try: ROTATE = int(a.split('=', 1)[1])
+        except ValueError: pass
+if ROTATE not in (0, 90, 180, 270):
+    ROTATE = None
+if ROTATE is None:
+    ROTATE = read_saved_rotation()
+if ROTATE is None:
+    ROTATE = 0                      # auto default: upright, fit to screen
+
+# ---------- init ----------
 pygame.init()
 screen = pygame.display.set_mode((0, 0), pygame.FULLSCREEN)
 pygame.mouse.set_visible(False)
 W, H = screen.get_size()
 
-# Work out the fixed on-screen rectangle ALL frames land in.
-# Rotate a sample, fit it to the screen with no stretch, and center it.
-_s = pygame.image.load(FRAMES[0]).convert()
-_s = pygame.transform.rotate(_s, ROTATE)
-rw, rh = _s.get_size()
-scale = min(W / rw, H / rh)
-TW, TH = int(rw * scale), int(rh * scale)
-BX, BY = (W - TW) // 2, (H - TH) // 2
-IMG_RECT = pygame.Rect(BX, BY, TW, TH)
+# Placeholders; compute_layout() fills these based on the current ROTATE.
+TW = TH = BX = BY = 0
+IMG_RECT = pygame.Rect(0, 0, 0, 0)
+
+def compute_layout():
+    """Fit a (rotated) frame to the screen with no stretch/crop, centered."""
+    global TW, TH, BX, BY, IMG_RECT
+    s = pygame.image.load(FRAMES[0]).convert()
+    if ROTATE:
+        s = pygame.transform.rotate(s, ROTATE)
+    rw, rh = s.get_size()
+    scale = min(W / rw, H / rh)
+    TW, TH = int(rw * scale), int(rh * scale)
+    BX, BY = (W - TW) // 2, (H - TH) // 2
+    IMG_RECT = pygame.Rect(BX, BY, TW, TH)
 
 def load(idx):
     img = pygame.image.load(FRAMES[idx]).convert()
-    img = pygame.transform.rotate(img, ROTATE)
+    if ROTATE:
+        img = pygame.transform.rotate(img, ROTATE)
     return pygame.transform.smoothscale(img, (TW, TH))
 
 def paint_static(surf):
@@ -70,6 +116,7 @@ def crossfade(cur, nxt):
         clock.tick(60)
     paint_static(nxt)
 
+compute_layout()
 i = 0
 cur = load(i)
 paint_static(cur)
@@ -86,6 +133,15 @@ while running:
         elif e.type == pygame.KEYDOWN:
             if e.key in (pygame.K_ESCAPE, pygame.K_q):
                 running = False
+            elif e.key == pygame.K_r:
+                # rotate the whole display 90 deg and remember it
+                ROTATE = (ROTATE + 90) % 360
+                save_rotation(ROTATE)
+                compute_layout()
+                cur = load(i)
+                nxt = load(nxt_i)
+                paint_static(cur)
+                last = pygame.time.get_ticks()
             elif e.key in (pygame.K_RIGHT, pygame.K_LEFT):
                 step = 1 if e.key == pygame.K_RIGHT else -1
                 tgt = (((i // PER_BIRD) + step) % (N // PER_BIRD)) * PER_BIRD

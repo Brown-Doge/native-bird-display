@@ -15,6 +15,24 @@ otherwise-unused monitor.
 - Descriptions, citations, and photos are all sourced from the
   **National Audubon Society**
 
+### Why Audubon
+
+Every slide is built as a self-contained, properly-credited card rather
+than a bare photo, so the source is documented in the display itself:
+
+- **Description & facts** (habitat, diet, length, range) come from
+  Audubon's [Field Guide](https://www.audubon.org/field-guide) entry
+  for that species — cited on the card as
+  `National Audubon Society • audubon.org/field-guide/bird/<species>`
+- **Photo credit** for each image is overlaid on the photo itself
+  (photographer name / *Audubon Photography Awards*), since most
+  photos are drawn from that program
+- Common name + scientific (Latin) name are both shown, matching
+  Audubon's own field guide format
+
+This keeps every bird slide individually sourced and citable, with no
+separate credits file to maintain or lose track of.
+
 ## Hardware & Deployment
 
 | | |

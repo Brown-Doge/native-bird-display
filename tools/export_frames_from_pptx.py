@@ -35,12 +35,24 @@ def resize_deck(src_path, out_pptx_path):
             elif shape.top == photo_top and shape.height == photo_h:
                 shape.height = photo_h + extra
                 if shape.shape_type == 13:  # PICTURE
-                    # Original crop % was calibrated for the old, much less
-                    # tall box. Reset it so the full photo stretches to
-                    # exactly fill the new panel instead of an inconsistent
-                    # leftover crop getting stretched on top of that.
-                    shape.crop_left = shape.crop_right = 0.0
-                    shape.crop_top = shape.crop_bottom = 0.0
+                    # Original crop % was a cover-fit calibrated for the old,
+                    # much less tall box -- recompute it as a cover-fit for
+                    # the new box so the photo fills it with no distortion
+                    # (crop the overflow, same idea as CSS object-fit: cover,
+                    # rather than stretching pixels non-uniformly).
+                    img_w, img_h = shape.image.size
+                    img_aspect = img_w / img_h
+                    box_aspect = shape.width / shape.height
+                    if img_aspect > box_aspect:
+                        visible_frac = box_aspect / img_aspect
+                        side = (1 - visible_frac) / 2
+                        shape.crop_left = shape.crop_right = side
+                        shape.crop_top = shape.crop_bottom = 0.0
+                    else:
+                        visible_frac = img_aspect / box_aspect
+                        side = (1 - visible_frac) / 2
+                        shape.crop_top = shape.crop_bottom = side
+                        shape.crop_left = shape.crop_right = 0.0
             elif shape.top == credit_top:
                 shape.top = credit_top + extra
             elif shape.top >= lower_threshold:
